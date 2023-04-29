@@ -1,22 +1,13 @@
 #!/usr/bin/env python3
 
-# Python script that calls the target application attached to this assignment, and shows a summary of the results. 
+# Pytest script to test if an application is vulnerable from SQL injections
 # Author: Lorenzo La Corte
 
-from argparse import ArgumentParser, BooleanOptionalAction, Namespace
-import unittest
-from urllib.parse import urlencode, quote_plus
 import logging
-import random
-import subprocess
-import time
-import uuid
-import os
 from pathlib import Path
-import asyncio
-import aiohttp
 import pytest
 import requests
+
 
 logging.basicConfig(filename="requests.log",
                     filemode='w',
@@ -58,75 +49,74 @@ error_payloads = [
         "1 AND ExtractValue(0, CONCAT( 0x5c, USER() ) ) -- - ",
 ]
 
-# --------------------------- REQUEST METHOD --------------------------- #
+# --------------------------- REQUEST METHODS --------------------------- #
 
-# Function that do the request 
-# Takes in input the target page
-# Takes in input the parameter dict (param: value) to insert in the query
-# Takes in input the query method {GET, POST}
-# Takes in input the oracle and return True if it is in the response
-def send_request(target, params, method, oracle, union_cols = None) -> bool:
-
-    if union_cols: pass # TODO in params, substitute __COLS__ with union_cols
-
+def send_request(target, params, method) -> str:
     if method == "GET": 
         response = requests.get(f"http://{IP}:{PORT}/{target}", params=params)
-        print(f"Sending request to: http://{IP}:{PORT}/{target} - With params: {params}")
+        print(f"Sending request to: http://{IP}:{PORT}/{target} - With params: {params}") # TODO: turn to log
+
+    elif method == "POST":
+        response = requests.post(f"http://{IP}:{PORT}/{target}", data=params)
+
+    else:
+        raise Exception(f"Error: Unrecognized Method")
 
     if response.status_code != 200:
         raise Exception(f"Error: {response.status_code}")
 
-    print(f"Result is: {response.text}\n")
-    return oracle in response.text
+    print(f"Result is: {response.text}\n") # TODO: turn to log
+    return response.text
+
+
+def functional_request(target, params, method, oracle) -> bool:
+    return oracle in send_request(target, params, method)
+
+
+def security_request(target, params, method, oracle) -> bool:
+    return oracle not in send_request(target, params, method)
 
 # ------------------------- FUNCTIONAL TESTING ------------------------- #
 
 @pytest.mark.parametrize("page", targets['find'])
 def test_functional_step_find(page):
-    # Functional: $search = Apple
-    # Oracle: Apple
     params = {"search": "Apple"}
     oracle = "Apple"
-    assert send_request(page, params, "GET", oracle) # GET is to change
-
+    assert functional_request(page, params, "GET", oracle)
 
 @pytest.mark.parametrize("page", targets['login'])
 def test_functional_step_login(page):
-    # Functional: $user=any, $pass=password
-    # Oracle: "Welcome"
     params = {"user": "any", "pass": "password"}
     oracle = "Welcome"
-    assert send_request(page, params, "GET", oracle) # GET is to change
+    assert functional_request(page, params, "POST", oracle)
 
 @pytest.mark.parametrize("page", targets['search'])
 def test_functional_step_search(page):
-    # Functional: $max = 100
-    # Oracle: "Apple" for {,2,4} and "3.00 €" for {3}
     params = {"max": 100} if "price" in page else {"search": "Apple"}
     oracle = "3.00 €" if "search_by_price3" in page else "Apple"
-    assert send_request(page, params, "GET", oracle) # GET is to change
+    assert functional_request(page, params, "GET", oracle)
 
 
 # ------------------------- SECURITY TESTING ------------------------- #
 
 
 @pytest.mark.parametrize("page", targets['find'])
-@pytest.mark.parametrize("payload", union_payloads+error_payloads)
-def tes_security_step_find(page, payload): # TODO: Fix and enable with "test"
+@pytest.mark.parametrize("payload", list(map(lambda payload: payload.replace("__COLS__", "USER(),USER()"), union_payloads)) + error_payloads)
+def test_security_step_find(page, payload):
     params = {"search": payload}
     oracle = "root"
-    assert send_request(page, params, "GET", oracle)
+    assert security_request(page, params, "GET", oracle)
 
 @pytest.mark.parametrize("page", targets['login'])
-@pytest.mark.parametrize("payload", union_payloads+error_payloads)
-def tes_security_step_login(page, payload): # TODO: Fix and enable with "test"
+@pytest.mark.parametrize("payload", list(map(lambda payload: payload.replace("__COLS__", "USER(),USER(),USER(),USER()"), union_payloads)) + error_payloads)
+def test_security_step_login(page, payload):
     params = {"user": "any", "pass": payload}
     oracle = "root"
-    assert send_request(page, params, "GET", oracle) # GET is to change
+    assert security_request(page, params, "POST", oracle)
 
 @pytest.mark.parametrize("page", targets['search'])
-@pytest.mark.parametrize("payload", union_payloads+error_payloads)
-def tes_security_step_search(page, payload): # TODO: Fix and enable with "test"
+@pytest.mark.parametrize("payload", list(map(lambda payload: payload.replace("__COLS__", "USER() AS name, USER() AS price"), union_payloads)) + error_payloads)
+def test_security_step_search(page, payload):
     params = {"max": payload} if "price" in page else {"search": payload}
     oracle = "root"
-    assert send_request(page, params, "GET", oracle)
+    assert security_request(page, params, "GET", oracle)
