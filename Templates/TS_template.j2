@@ -32,10 +32,10 @@ def CollectTargets(basepath):
 
 
 # TODO: refactor with args: https://stackoverflow.com/questions/40880259/how-to-pass-arguments-in-pytest-by-command-line
-basepath = "Application/"
+basepath = "{{ BASEPATH }}/"
 targets = CollectTargets(basepath)
 IP = "localhost"
-PORT = 8001
+PORT = {{ PORT }}
 
 union_payloads = [
         "' UNION ALL SELECT __COLS__ -- - ",

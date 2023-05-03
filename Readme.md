@@ -46,3 +46,22 @@ For each page of the target application, there is test step that checks:
     - first offline
     - then in the script
 - enable logging
+
+## How to Use
+
+If you want to change parameters:
+
+```
+pip install jinja2
+python script.py --basepath Application --port 9000 --pass pass123
+```
+
+Then you can setup the application:
+```
+./setup.sh
+```
+
+And then launch the testsuite:
+```
+pytest
+```
