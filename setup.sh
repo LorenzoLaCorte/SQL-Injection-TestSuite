@@ -2,8 +2,8 @@
 
 CONTAINER_NAME="mysql-container"
 MYSQL_IP="172.17.0.2"
-MYSQL_PASSWORD="pluto"
-PHP_PORT=8001
+MYSQL_PASSWORD="pass123"
+PHP_PORT=9000
 APP_PATH="Application"
 
 if [[ ! -z $(docker ps -a -q -f name="$CONTAINER_NAME") ]]; then

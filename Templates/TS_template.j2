@@ -3,20 +3,23 @@
 # Pytest script to test if an application is vulnerable from SQL injections
 # Author: Lorenzo La Corte
 
-import logging
-from pathlib import Path
 import pytest
+from pathlib import Path
 import requests
+from logging import getLogger, FileHandler, DEBUG
+import os
+
+NEW_LOG_EACH_RUN = True
+
+def getMyLogger(log_file):
+    if os.path.isfile(log_file) and NEW_LOG_EACH_RUN: 
+        os.remove(log_file)
+    logger = getLogger()
+    logger.addHandler(FileHandler(log_file))
+    logger.setLevel(DEBUG)
+    return logger
 
 
-logging.basicConfig(filename="requests.log",
-                    filemode='w',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.DEBUG)
-
-
-# TODO: refactor
 def CollectTargets(basepath):
     targets: dict[str, list[str]] = {}
     basepath = Path(basepath)
@@ -30,12 +33,13 @@ def CollectTargets(basepath):
 
     return targets
 
-
-# TODO: refactor with args: https://stackoverflow.com/questions/40880259/how-to-pass-arguments-in-pytest-by-command-line
+log_file = "requests.log"
 basepath = "{{ BASEPATH }}/"
-targets = CollectTargets(basepath)
 IP = "localhost"
 PORT = {{ PORT }}
+
+myLogger = getMyLogger(log_file)
+targets = CollectTargets(basepath)
 
 union_payloads = [
         "' UNION ALL SELECT __COLS__ -- - ",
@@ -54,18 +58,17 @@ error_payloads = [
 def send_request(target, params, method) -> str:
     if method == "GET": 
         response = requests.get(f"http://{IP}:{PORT}/{target}", params=params)
-        print(f"Sending request to: http://{IP}:{PORT}/{target} - With params: {params}") # TODO: turn to log
-
     elif method == "POST":
         response = requests.post(f"http://{IP}:{PORT}/{target}", data=params)
-
     else:
         raise Exception(f"Error: Unrecognized Method")
+
+    myLogger.debug(f"Sending request to: http://{IP}:{PORT}/{target} - With params: {params}")
 
     if response.status_code != 200:
         raise Exception(f"Error: {response.status_code}")
 
-    print(f"Result is: {response.text}\n") # TODO: turn to log
+    myLogger.debug(f"Result is: {response.text}\n")
     return response.text
 
 
@@ -117,6 +120,6 @@ def test_security_step_login(page, payload):
 @pytest.mark.parametrize("page", targets['search'])
 @pytest.mark.parametrize("payload", list(map(lambda payload: payload.replace("__COLS__", "USER() AS name, USER() AS price"), union_payloads)) + error_payloads)
 def test_security_step_search(page, payload):
-    params = {"max": payload} if "price" in page else {"search": payload}
+    params = {"max": payload}
     oracle = "root"
     assert security_request(page, params, "GET", oracle)
